@@ -1,5 +1,7 @@
 # Ignore config files
 param.txt
+llm_json.txt
+desc.txt
 
 
 # Ignore folders

@@ -90,7 +90,7 @@ def contains_keywords(text, keywords):
     return any(keyword.lower() in text_lower for keyword in keywords)
 
 SKILL_KEYWORDS = ["requirement", "certification", "tech stack", "skill", "responsibilities", "nice to have", "must have"]
-SENIORITY_KEYWORDS = [ "senior", "lead", "principal", "manager", "Level 2"]
+SENIORITY_KEYWORDS = [ "senior", "lead", "principal", "manager", "Level 2", "Director"]
 NON_PREFERED_KEYWORDS = [ "vehicle", "travel", "Driving License"]
 
 WORD_NUM_PATTERN = r"(one|two|three|four|five|six|seven|eight|nine|ten)"
@@ -174,6 +174,8 @@ def extract_experience(text):
     return results
 
 def analyze_with_llm(text, model="gemma3:12b"):
+    print("⟲ Generating analysis...")
+
     prompt = f"""
     Extract the following from the job description:
 
@@ -205,7 +207,7 @@ def analyze_with_llm(text, model="gemma3:12b"):
         }
     )
 
-    return json.loads(response.text)['response']    # text need to be parsed
+    return json.loads(response.text)['response'][7:-3]    # text need to be parsed
 
 def hyperlink(label, url):
     ESC = "\033]"
@@ -270,6 +272,61 @@ def get_full_description(jobObj):
 
         return description, success
 
+def save2txt(filename, content):
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(str(content))
+
+def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM usage and web call
+    reason = ""
+    if job.days_ago > 30: # old job
+        reason = reason + f"⚠  Job is older than 30 days.\n"
+    if contains_keywords(job.title.lower(), SENIORITY_KEYWORDS):
+        reason = reason + f"⚠  Contains senior-level keyword ({[k for k in SENIORITY_KEYWORDS if k in job.title.lower()]}).\n"
+    if contains_keywords(job.desciption, NON_PREFERED_KEYWORDS):
+        reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in job.desciption]}).\n"
+                
+    if reason != "":
+        print(f"""⚠  Info Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
+        print(reason)
+
+    return reason == ""
+
+def description_checker(JobDesc: str):     # filter with full description  # reduce LLM usage
+
+    desc_pass = True
+    exp_pass = True
+
+
+    years_of_experience = extract_experience(JobDesc)   #yrs of exp check
+    if years_of_experience:
+        print(f"""Experience Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
+        
+        for exp in years_of_experience:
+            if exp['min_years'] > 2:
+                tag = "⚠ " 
+            else:
+                tag = "- "
+                exp_pass = False
+            if exp["type"] == "range":  print(f"{tag}{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)")
+            else:                       print(f"{tag}{exp['phrase']} ({exp['min_years']} years)")
+        print()
+
+
+    reason = ""
+    if not contains_keywords(JobDesc, SKILL_KEYWORDS):
+        reason = reason + f"⚠  Description might not include requirements or specification.\n"
+        desc_pass = False
+    if contains_keywords(JobDesc, NON_PREFERED_KEYWORDS):
+        reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in JobDesc]}).\n"
+        desc_pass = False
+
+    if reason != "":
+        print(f"""⚠  Description Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
+        print(reason)
+
+    return desc_pass, exp_pass
+    
+    
 
 class JobPosting:
     def __init__(self, title, company, location, date_created, url, description, contract_time = "N/A"):
@@ -280,23 +337,18 @@ class JobPosting:
         self.url = url
         self.contract_time = contract_time
         self.days_ago = days_to_today(date_created)
-        self.years_exp = None
-        self.LLM_capable = True
         self.desciption = description
 
-    def set_LLM_not_capable(self):
-        self.LLM_capable = False
-
-    def get_LLM_capable(self):
-        return self.LLM_capable
-
-    def set_years_exp(self, years: list):
-        self.years_exp = years
-
     def __str__(self):
-        if self.days_ago == 0:  day_str = "Today"
+        if self.days_ago <= 0:  day_str = "Today"
         else:                   day_str = f"{self.days_ago} days ago"
-        return f"● {self.title} ({self.contract_time}) - {self.company} @{self.location} - {self.date_created} ({day_str})  ID: {hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)}\n{"="*80}\n{self.desciption}"
+        return f"""
+ ● {self.title} - {self.company}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ID: {hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)} ━━━
+{'Contract Type':<20}: {self.contract_time}
+{'Location':<20}: {self.location}
+{'Posted':<20}: {self.date_created} ({day_str})
+"""
 
 def m1_via_api():
     app_id, app_key = load_api_param()
@@ -340,60 +392,43 @@ def m1_via_api():
 
             print(jobObj)
 
-            reason = None
-
-            # filter from job basic info                                        # reduce LLM usage, reduce web call
-            if days_to_today(job.get('created')) > 30: # old job
-                reason = f"\n⚠  Job is older than 30 days.\n Skipping..."
-            elif contains_keywords(job.get("title").lower(), SENIORITY_KEYWORDS):
-                reason = f"\n⚠  Job title contains senior-level keyword ({[k for k in SENIORITY_KEYWORDS if k in job.get("title", "").lower()]}).\n Skipping..."
-            elif contains_keywords(jobObj.desciption, NON_PREFERED_KEYWORDS):
-                reason = f"\n⚠  Job title contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in jobObj.desciption]}).\n Skipping..."
-                
-            if reason is None:
-                time.sleep(3)
-                os.system('cls' if os.name == 'nt' else 'clear') 
+            info_passes = info_checker(jobObj)
+            if not info_passes:
+                input("Enter to Next")
+                os.system('cls' if os.name == 'nt' else 'clear')
                 continue
-
-            print(f"\n Basic filter passed. ")
 
             jobObj.desciption, full_desc_success = get_full_description(jobObj)
 
             if not full_desc_success:
                 continue
 
+            save2txt("desc.txt", jobObj.desciption)
 
 
-            # refactor as function for other modes?
+            desc_pass, exp_pass = description_checker(jobObj.desciption)
+            if not desc_pass:
+                input("Enter to Next")
+                os.system('cls' if os.name == 'nt' else 'clear')
+                continue
+            
+            if exp_pass and input("⚠  Please review the years of experiences. Proceed? [Y / N}") == "Y":
+                llm_result = analyze_with_llm(jobObj.desciption)    # TODO: currently ouputing raw json in text, this need to be parsed
+                print(llm_result)
+                
+                save2txt("llm_json.txt", llm_result)
+            else:
+                os.system('cls' if os.name == 'nt' else 'clear')
+                continue
 
-            # filter with full description                                      # reduce LLM usage
-            if not contains_keywords(jobObj.desciption, SKILL_KEYWORDS):
-                print("\n⚠  Full description might not include requirements or specification. ")
 
-            if contains_keywords(jobObj.desciption, NON_PREFERED_KEYWORDS):
-                print(f"\n⚠  Job title contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in jobObj.desciption]}).\n Skipping...")
-                time.sleep(3)
-                os.system('cls' if os.name == 'nt' else 'clear') 
+            
 
-            years_of_experience = extract_experience(jobObj.desciption)
-            if years_of_experience:
-                print("  - Experience Requirements:")
-                for exp in years_of_experience:
-                    if exp["type"] == "range":
-                        print(f"    * {exp['phrase']} (Min: {exp['min_years']} years, Max: {exp['max_years']} years)")
-                    else:
-                        print(f"    * {exp['phrase']} (Min: {exp['min_years']} years)")
-                    if exp['min_years'] > 2:
-                        print("⚠  Description indicates a requirement for more than 2 years of experience.")
-                        jobObj.set_LLM_not_capable()
 
-            if jobObj.LLM_capable:
-                print("  - Generating analysis with LLM...")
-                print(analyze_with_llm(jobObj.desciption))
+
 
             while True:
-                print(f"\n Options:\nEnter -> Continue\na -> Save to Pass List (WIP)\nd -> Show Description")
-                decision = input()
+                decision = input(f"\n Options:\nEnter -> Next\na -> Save to Pass List (WIP)\nd -> Show Description\n")
                 match decision:
                     case "d":
                         print(f"\n==========   Full Description   ==========\n{jobObj.desciption}")
@@ -409,25 +444,30 @@ def m1_via_api():
 
             #implement LLM with getting the matching score of my capability and the job requirement, and the improvment point to reach this job  
 
-            # concept CLI UI creeated by GPT
             '''
-                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                📌 Backend Developer
-                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                Match Score      : 72%
-                Posted           : 3 days ago
-                Experience Req   : 3-5 years
+                ⟲ Generating analysis...
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Score: 72% ━━━
+                ● Skills                ● Nice to have
+                    ✔ Java                  - OmniStudio
+                    - Kotlin                - Azure
+                    - React                 - CI/CD
+                    ✔ Typescript
+                    - Springboot
+                    - Kubernetes
+                    ✔ REST API
 
-                ✔ Matching Skills
-                - Java
-                - Spring Boot
-                - REST API
+                ⚠ Experience Req : Software Engineer (3-5 years)
 
-                ⚠ Missing Skills
-                - Kubernetes
-                - AWS
+                ● Responsibilities
+                    - Building and enhancing MYOB's checkout journey
+                    - Enabling secure, seamless connectivity between MYOB and financial institutions
+                    - Designing and developing scalable, performant, and secure systems
+                    - Collaboration with team member               
 
-                💡 Improvement Suggestion
+                ● Career Relevance: 60% (Helpful)
+                Experience with cloud platforms (AWS, Azure), Kubernetes, and scalable systems are valuable in the Japanese IT landscape, which is increasingly adopting cloud-native technologies.
+
+                ● Improvement Suggestion
                 Learn Kubernetes fundamentals and deploy a demo project.
             '''
 
@@ -446,7 +486,16 @@ def m2_via_html():
 
     
     # create jobObj from local HTML
+    main_post = soup.select_one("main.ui-main")
+    title = soup.select_one("h1.leading-none")#.getText().strip()
+    job_info = soup.select_one("div.flex-grow").select_one("div.ui-job-card-info")#.getText().strip()
+    description = soup.select_one("section.adp-body").getText().strip()
 
+
+    print(title)
+    print(job_info)
+    
+    input()
 
     jobObj = JobPosting(
         title = job.get('title'),
@@ -474,7 +523,7 @@ if __name__ == "__main__":
 
     mode = None
     while mode != "1":
-        print(f"Welcome to Job Streamlinear!/n/n Please select mode:")
+        print(f"Welcome to Job Streamlinear!\n\n Please select mode:")
         print(f" 1. Auto Search via Adzuna API")
         print(f" 2. Paste via URL (WIP)")
         print(f" 3. Paste Raw Text (WIP)")
@@ -485,7 +534,7 @@ if __name__ == "__main__":
                 os.system('cls' if os.name == 'nt' else 'clear')
                 m1_via_api()
             case "2":
-                print("WIP")
+                m2_via_html()
             case "3":
                 print("WIP")
             case _:
