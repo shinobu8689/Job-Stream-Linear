@@ -7,6 +7,8 @@ import os
 import re
 import time
 from pathlib import Path
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
+
 
 
 headers = {"User-Agent": "Mozilla/5.0"}
@@ -91,7 +93,7 @@ def contains_keywords(text, keywords):
 
 SKILL_KEYWORDS = ["requirement", "certification", "tech stack", "skill", "responsibilities", "nice to have", "must have"]
 SENIORITY_KEYWORDS = [ "senior", "lead", "principal", "manager", "Level 2", "Director"]
-NON_PREFERED_KEYWORDS = [ "vehicle", "travel", "Driving License"]
+NON_PREFERED_KEYWORDS = [ "vehicle", "travel", "Driving License", "NV1 Clearance", "NV1"]
 
 WORD_NUM_PATTERN = r"(one|two|three|four|five|six|seven|eight|nine|ten)"
 DIGIT_PATTERN = r"\d+"
@@ -177,25 +179,36 @@ def analyze_with_llm(text, model="gemma3:12b"):
     print("⟲ Generating analysis...")
 
     prompt = f"""
-    Extract the following from the job description:
+Extract the following from the job description. Return STRICT valid JSON only. 
 
+{{
+  "skills": [string],
+  "optional_skills": [string],
+  "min_experience_years": [
     {{
-        "skills": [],
-        "optional_skills":[]
-        "min_experience_years": int or null,
-        "responsibilities": []
-        "japan_career_relevance": [
-            "score": float (between 0-1),
-            "verdict": "Helpful" or "Neutral" or "Risky",
-            "reason": str (one-sentence reason of how would it help to work in Japan in a future in IT industry)
-        ]
+      "phase": string,
+      "min_years": number,
+      "max_years": number
     }}
+  ] or null,
+  "responsibilities": [string],
+  "japan_career_relevance": {{
+    "score": float (0 - 1),
+    "verdict": "Helpful" | "Neutral" | "Risky",
+    "reason": string
+  }}
+}}
 
-    Only return valid JSON. Ignore marketing fluff.
+Rules:
+- Use numbers for years (no text like "1 year").
+- If only a minimum is mentioned, omit max_years.
+- If no experience requirement is mentioned, return null.
+- Remove marketing or culture statements.
+- Keep skills concise (technologies, tools, frameworks).
     
-    Job description:
-    {text}
-    """
+Job description:
+{text}
+"""
 
     response = requests.post(       # to local ollama LLM
         "http://localhost:11434/api/generate",
@@ -213,6 +226,13 @@ def hyperlink(label, url):
     ESC = "\033]"
     BEL = "\007"
     return f"{ESC}8;;{url}{BEL}{label}{ESC}8;;{BEL}"
+
+def block_redirect(route, request):
+    if request.is_navigation_request() and request.redirected_from:
+        route.abort()
+    else:
+        route.continue_()
+
 
 def get_full_description(jobObj):  
 
@@ -245,6 +265,7 @@ def get_full_description(jobObj):
 
 
         pw_page = browser.new_page()
+        #pw_page.route("**/*", block_redirect)
         job_url = jobObj.url   # reduce webpage get to redeuce time
         pw_page.goto(job_url)
         pw_page.wait_for_timeout(10)
@@ -253,14 +274,11 @@ def get_full_description(jobObj):
         description = soup.select_one("section.adp-body")                   # reduce LLM token used
         if description is None:
             print("\n⚠  Failed to get full description. Please check with Playwright Browser.")
-            input("Please save page HTML file in the dir. Then press enter.")
-            
-            # TODO: get HTML file in project folder.
-            manual_description = None 
+            input("Please paste content into content.txt'. Then press enter.")
+
+            manual_description = load_text_file("content.txt")
             if manual_description != "":
-                description = manual_description
-                description = clean_section(description)                            
-                description = description.get_text(separator="\n", strip=True)
+                description = manual_description                       
                 success = True
         else:
             description = clean_section(description)                            
@@ -275,6 +293,26 @@ def get_full_description(jobObj):
 def save2txt(filename, content):
     with open(filename, "w", encoding="utf-8") as f:
         f.write(str(content))
+
+def clean_url(raw_url: str) -> str:
+    parsed = urlparse(raw_url)
+
+    # Parse existing query params
+    query_dict = parse_qs(parsed.query)
+
+    # Re-encode query params safely
+    encoded_query = urlencode(query_dict, doseq=True)
+
+    # Rebuild the full URL
+    return urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        encoded_query,
+        parsed.fragment
+    ))
+
 
 def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM usage and web call
     reason = ""
@@ -304,9 +342,9 @@ def description_checker(JobDesc: str):     # filter with full description  # red
         for exp in years_of_experience:
             if exp['min_years'] > 2:
                 tag = "⚠ " 
+                exp_pass = False
             else:
                 tag = "- "
-                exp_pass = False
             if exp["type"] == "range":  print(f"{tag}{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)")
             else:                       print(f"{tag}{exp['phrase']} ({exp['min_years']} years)")
         print()
@@ -335,6 +373,7 @@ class JobPosting:
         self.location = location['display_name']
         self.date_created = parse_date(date_created)
         self.url = url
+        self.id = url[self.url.rfind("/")+1:self.url.find("?")]
         self.contract_time = contract_time
         self.days_ago = days_to_today(date_created)
         self.desciption = description
@@ -346,17 +385,20 @@ class JobPosting:
  ● {self.title} - {self.company}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ID: {hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)} ━━━
 {'Contract Type':<20}: {self.contract_time}
-{'Location':<20}: {self.location}
+{'Location':<20}: {hyperlink(self.location, clean_url(f"https://www.google.com/search?q={self.location}"))}
 {'Posted':<20}: {self.date_created} ({day_str})
 """
 
 def m1_via_api():
+
+    position = input("You are looking for? ")
+
     app_id, app_key = load_api_param()
 
     params = {
         "app_id": app_id,
         "app_key": app_key,
-        "what": "Developer",
+        "what": position,
         "where": "melbourne",
         "results_per_page": 10,
         "distance": 25
@@ -392,9 +434,17 @@ def m1_via_api():
 
             print(jobObj)
 
-            info_passes = info_checker(jobObj)
-            if not info_passes:
-                input("Enter to Next")
+            prev_pass = not jobObj.id in load_text_file("pass_list.txt").split("\n")
+            if not prev_pass:
+                print(f"Viewed Previously, Skipping...")
+                time.sleep(5)
+                os.system('cls' if os.name == 'nt' else 'clear')
+                continue
+
+            info_pass = info_checker(jobObj)
+            if not info_pass:
+                print(f"Skipping...")
+                time.sleep(5)
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue
 
@@ -403,73 +453,49 @@ def m1_via_api():
             if not full_desc_success:
                 continue
 
-            save2txt("desc.txt", jobObj.desciption)
-
 
             desc_pass, exp_pass = description_checker(jobObj.desciption)
             if not desc_pass:
-                input("Enter to Next")
+                print(f"Skipping...")
+                time.sleep(5)
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue
             
-            if exp_pass and input("⚠  Please review the years of experiences. Proceed? [Y / N}") == "Y":
-                llm_result = analyze_with_llm(jobObj.desciption)    # TODO: currently ouputing raw json in text, this need to be parsed
-                print(llm_result)
-                
+
+            if exp_pass:
+                llm_result = analyze_with_llm(jobObj.desciption)
                 save2txt("llm_json.txt", llm_result)
+                parse_response(llm_result)
+                
+                
             else:
-                os.system('cls' if os.name == 'nt' else 'clear')
-                continue
+                if input("⚠  Please review the years of experiences. Still need a summary? [Y / N]") == "Y":
+                    llm_result = analyze_with_llm(jobObj.desciption)              
+                    save2txt("llm_json.txt", llm_result)
+                    parse_response(llm_result)
 
-
-            
+        
 
 
 
 
             while True:
-                decision = input(f"\n Options:\nEnter -> Next\na -> Save to Pass List (WIP)\nd -> Show Description\n")
+                decision = input(f"\n Options:\nEnter -> Next\na -> Save to Pass List\nd -> Show Description\n")
                 match decision:
                     case "d":
                         print(f"\n==========   Full Description   ==========\n{jobObj.desciption}")
                         print(f"==========     End Description      ==========\n")
                     case "a":
-                        print(f"\n Saved to Pass List. (WIP, not really saving.)")
-                        # WIP, save ID to pass list
+                        print(f"\n Save to Pass List")
+                        save2pass(jobObj.id)
+                        break
                     case _:
                         break
 
 
 
 
-            #implement LLM with getting the matching score of my capability and the job requirement, and the improvment point to reach this job  
-
-            '''
-                ⟲ Generating analysis...
-                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Score: 72% ━━━
-                ● Skills                ● Nice to have
-                    ✔ Java                  - OmniStudio
-                    - Kotlin                - Azure
-                    - React                 - CI/CD
-                    ✔ Typescript
-                    - Springboot
-                    - Kubernetes
-                    ✔ REST API
-
-                ⚠ Experience Req : Software Engineer (3-5 years)
-
-                ● Responsibilities
-                    - Building and enhancing MYOB's checkout journey
-                    - Enabling secure, seamless connectivity between MYOB and financial institutions
-                    - Designing and developing scalable, performant, and secure systems
-                    - Collaboration with team member               
-
-                ● Career Relevance: 60% (Helpful)
-                Experience with cloud platforms (AWS, Azure), Kubernetes, and scalable systems are valuable in the Japanese IT landscape, which is increasingly adopting cloud-native technologies.
-
-                ● Improvement Suggestion
-                Learn Kubernetes fundamentals and deploy a demo project.
-            '''
+            #implement LLM with getting the matching score of my capability and the job requirement, and the improvment point to reach this job 
 
             os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -512,8 +538,73 @@ def m2_via_html():
 
     # Proceed to LLM Filter (extracted refactor code from mode 1)
 
+def load_text_file(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def save2pass(ID: str):
+    if not ID in load_text_file("pass_list.txt").split("\n"):
+        with open('pass_list.txt', 'a', encoding='utf-8') as f:
+            f.write(f'{ID}\n')
+
+def parse_response(text):
+    
+    # text = load_text_file("llm_json.txt")
+    resp = json.loads(text)
+
+    pp = load_text_file("personal_profile.txt").split("\n")
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Score: --% ━━━")
+
+    skills = resp.get('skills')
+    opt_skills = resp.get('optional_skills')
+    print(f'{"● Skills":<30}{"● Nice to have":<30}')
+    for each in range(max(len(skills), len(opt_skills))):
+        if each <= len(skills)-1 and skills[each] in pp: 
+            check_L = "  ✔  " 
+        else: 
+            check_L = "   - "
+        if each <= len(opt_skills)-1 and opt_skills[each] in pp: 
+            check_R = "  ✔  " 
+        else: 
+            check_R = "   - "
+        left = check_L + skills[each] if each <= len(skills)-1 else ""
+        right = check_R + opt_skills[each] if each <= len(opt_skills)-1 else ""
 
 
+
+        print(f"{left:<30}{right:<30}")
+    print()
+
+    responsibilities = resp.get('responsibilities')
+    print(f"● Responsibilities")
+    for each in responsibilities:
+        print(f"  - {each}")
+    print()
+
+    exp_years = resp.get('min_experience_years')
+    if exp_years:
+        print("● Experience Req")
+        for each in exp_years:
+            phase = each.get("phase", "Unknown")
+            min_years = each.get("min_years")
+            max_years = each.get("max_years")
+
+            if max_years is None:
+                print(f"  - {phase} ({min_years} years)")
+            else:
+                print(f"  - {phase} ({min_years} - {max_years} years)")
+
+    relevance = resp.get('japan_career_relevance')
+    print(f"""
+● Career Relevance: {int(float(relevance.get('score')*100))}% ({relevance.get('verdict')})
+{relevance.get('reason')}
+""")
+    
+    print(f"● Improvement Suggestion")
+    print("")
+
+    return
 
 
 if __name__ == "__main__":
@@ -527,6 +618,7 @@ if __name__ == "__main__":
         print(f" 1. Auto Search via Adzuna API")
         print(f" 2. Paste via URL (WIP)")
         print(f" 3. Paste Raw Text (WIP)")
+        print(f" 4. test")
         mode = input()
 
         match mode:
@@ -537,6 +629,9 @@ if __name__ == "__main__":
                 m2_via_html()
             case "3":
                 print("WIP")
+            case "4":
+                text = load_text_file("llm_json.txt")
+                parse_response(text)
             case _:
                 print("Invalid mode selected. Exiting.")
                 exit()

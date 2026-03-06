@@ -2,6 +2,9 @@
 param.txt
 llm_json.txt
 desc.txt
-
+content.txt
+demo.txt
+personal_profile.txt
+pass_list.txt
 
 # Ignore folders

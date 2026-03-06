@@ -1,7 +1,8 @@
 basic prototype and plannings for Job Stream Linear (Temp Name)
 
 changelog
-
+- 07/03
+  - auto compare for personal capabilities to the job requirement
 - 06/03
   - refactored and modularised the flow, better print
 - 04/03
