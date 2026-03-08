@@ -1,4 +1,5 @@
 import json
+import random
 from playwright.sync_api import sync_playwright
 import requests
 from datetime import datetime, timezone
@@ -236,54 +237,36 @@ def clean_url(raw_url: str) -> str:
 def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM usage and web call
     reason = ""
     if job.days_ago > 30: # old job
-        reason = reason + f"⚠  Job is older than 30 days.\n"
+        reason = reason + f"[>30 days] "
     if util.contains_keywords(job.title.lower(), SENIORITY_KEYWORDS):
-        reason = reason + f"⚠  Contains senior-level keyword ({[k for k in SENIORITY_KEYWORDS if k in job.title.lower()]}).\n"
+        reason = reason + f"[Keyword ({[k for k in SENIORITY_KEYWORDS if k in job.title.lower()]}) "
     if util.contains_keywords(job.desciption, NON_PREFERED_KEYWORDS):
-        reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in job.desciption]}).\n"
+        reason = reason + f"Keyword ({[k for k in NON_PREFERED_KEYWORDS if k in job.desciption]}) "
                 
-    if reason != "":
-        print(f"""⚠  Info Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
-        print(reason)
-
-    return reason == ""
+    sym = '⚠  ' if reason != "" else ""
+    return reason == "", f"""{sym}{reason}"""
 
 def description_checker(JobDesc: str):     # filter with full description  # reduce LLM usage
 
     desc_pass, exp_pass = True, True
-
-    years_of_experience = extract_experience(JobDesc)   #yrs of exp check
-    if years_of_experience:
-        print(f"""Experience Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
-        for exp in years_of_experience:
-            if exp['min_years'] > 2:
-                tag, exp_pass = "⚠ ", False
-            else:
-                tag = "- "
-            if exp["type"] == "range":  print(f"{tag}{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)")
-            else:                       print(f"{tag}{exp['phrase']} ({exp['min_years']} years)")
-        print()
-
-
     reason = ""
-    if not util.contains_keywords(JobDesc, SKILL_KEYWORDS):
-        reason = reason + f"⚠  Description might not include requirements or specification.\n"
+
+    if JobDesc.strip() == "":
+        desc_pass = False
+        reason = reason + f"⚠ Meaningless Talk"
+
+    yrs_of_exp = extract_experience(JobDesc)   #yrs of exp check
+    if yrs_of_exp:
+        for exp in yrs_of_exp:
+            if exp['min_years'] > 2:
+                exp_pass = False
+                reason = reason + f"⚠ Min Exp"
+    
     if util.contains_keywords(JobDesc, NON_PREFERED_KEYWORDS):
-        reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in JobDesc]}).\n"
+        reason = reason + f"⚠  Keyword ({[k for k in NON_PREFERED_KEYWORDS if k in JobDesc]}).\n"
         desc_pass = False
 
-    if reason != "":
-        print(f"""⚠  Description Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
-        print(reason)
-
-    return desc_pass, exp_pass
-    
-def skippping_seq(ID):
-    print(f"Skipping...")
-    print(f"Saved to Pass List")
-    save2pass(ID)
-    time.sleep(4)
-    os.system('cls' if os.name == 'nt' else 'clear')
+    return desc_pass, exp_pass, yrs_of_exp, reason
 
 class JobPosting:
     def __init__(self, title, company, location, date_created, url, description, contract_time = "N/A"):
@@ -292,57 +275,75 @@ class JobPosting:
         self.location = location['display_name']
         self.date_created = util.parse_date(date_created)
         self.url = url
-        self.id = url[self.url.rfind("/")+1:self.url.find("?")]
+        self.id = url[self.url.rfind("/") + 1 : self.url.find("?") if "?" in self.url else None]
         self.contract_time = contract_time
         self.days_ago = util.days_to_today(date_created)
         self.desciption = description
+        self.yrs_exp = None
 
     def __str__(self):
         if self.days_ago <= 0:  day_str = "Today"
         else:                   day_str = f"{self.days_ago} days ago"
-        return f"""
- ● {self.title} - {self.company}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ID: {util.hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)} ━━━
-{'Contract Type':<20}: {self.contract_time}
-{'Location':<20}: {util.hyperlink(self.location, clean_url(f"https://www.google.com/search?q={self.location}"))}
-{'Posted':<20}: {self.date_created} ({day_str})
-"""
+
+        title_company = f"{self.title} - {self.company}"
+        if len(title_company) > 55:
+            title_company = title_company[:52] + "..."
+        return (
+            f"{util.hyperlink('🔗', self.url)} {self.id:<12}"
+            f"{(title_company):<60}"
+            f"{self.contract_time:<11}"
+            f"{util.hyperlink('🗺️', clean_url(f'https://www.google.com/search?q={self.location}'))} {self.location.split(", ")[0]:<15}"
+            f"{self.date_created:<10} ({day_str + ")":<12}"
+        )
+
+def parse_yrs_exp(yrs_exp):
+    yrs = ""
+    for exp in yrs_exp:
+        if exp['min_years'] > 2:    yrs = yrs + "  ⚠ "
+        else:                       yrs = yrs + "  - "
+        if exp["type"] == "range":  yrs = yrs + f"{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)\n"
+        else:                       yrs = yrs + f"{exp['phrase']} ({exp['min_years']} years)\n"
+    return yrs
+
 
 def m1_via_api():
 
     position = input("You are looking for? ")
+    os.system('cls' if os.name == 'nt' else 'clear')
 
     app_id, app_key = load_api_param()
+    
+    results_per_page = 3
 
     params = {
         "app_id": app_id,
         "app_key": app_key,
         "what": position,
         "where": "melbourne",
-        "what_exclude": "senior lead principal manager Director",
+        "what_exclude": "senior lead principal manager director",
         "max_days_old": 30,
-        "results_per_page": 50,
+        "results_per_page": results_per_page,
         "distance": 25
     }
 
     page_num = 0
-    job_counter = 0
 
+    limit = 99999
 
+    while limit == 99999 or min(results_per_page*page_num, data['count']) <= limit:
 
-    while True:
+        basic_shortlist = []
+        full_shortlist = []
+
         page_num += 1
-
         response = requests.get(url + str(page_num), params=params)
         data = response.json()  # TODO: Should check response status and handle errors
+        limit = data['count']
 
+        print(f"Showing {results_per_page*(page_num-1)+1} - {min(results_per_page*page_num, data['count'])} of {data['count']} job listings (Page {page_num}) for '{params['what']}' in '{params['where']}' within {params['distance']}km radius:")
+        
         for job in data["results"]:
-
-            job_counter += 1
-            if job['category']['label'] != "IT Jobs": continue  # filter non-IT Job, this should be modularised as an option
-
-            print(f"Found {job_counter}/{data['count']} job listings (Page {page_num}) for '{params['what']}' in '{params['where']}' within {params['distance']}km radius:")
-
+            
             jobObj = JobPosting(
                 title = job.get('title'),
                 company = job.get('company'),
@@ -353,52 +354,75 @@ def m1_via_api():
                 contract_time = job.get('contract_time') or "N/A"
             )
 
-            print(jobObj)
-
-            prev_pass = not jobObj.id in util.load_text_file("pass_list.txt").split("\n")
-            if not prev_pass:
-                os.system('cls' if os.name == 'nt' else 'clear')
-                continue
-
-            info_pass = info_checker(jobObj)
-            if not info_pass:
-                skippping_seq(jobObj.id)
-                continue
-
-            jobObj.desciption, full_desc_success = get_full_description(jobObj)
-
-            if not full_desc_success:
-                continue
-
-            desc_pass, exp_pass = description_checker(jobObj.desciption)
-            if not desc_pass:
-                skippping_seq(jobObj.id)
+            if job['category']['label'] != "IT Jobs":
                 continue
             
+            prev_pass = jobObj.id in util.load_text_file("pass_list.txt").split("\n")
+            if prev_pass:
+                print(jobObj, " 🅿️ Record")
+                continue
 
+            book_pass = jobObj.id in util.load_text_file("bookmarks.txt").split("\n")
+            if book_pass:
+                print(jobObj, "🔖 Bookmarked")
+                continue
+
+            info_pass, reason = info_checker(jobObj)
+            if not info_pass:
+                print(jobObj, f" 🅿️ Saved", reason)
+                save2pass(jobObj.id)
+                continue
+
+            print(jobObj, f"📜 Approved")
+
+            basic_shortlist.append(jobObj)
+        
+        if len(basic_shortlist) > 0:
+            # input(f"\n{"[Enter]":<7} -> Description Check")
+            util.countdown("Description Check ", 5)
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(f""" ● Description Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
+            
+
+        for job in basic_shortlist:
+
+            job.desciption, full_desc_success = get_full_description(job) # TODO: this need to be replace with a more anti bot version
+            desc_pass, exp_pass, job.yrs_exp, reason = description_checker(job.desciption)
+
+            if not desc_pass or not exp_pass:
+                print(job, f" 🅿️ Saved")
+                if job.yrs_exp:
+                   print(parse_yrs_exp(job.yrs_exp))
+                save2pass(job.id)
+                continue
             if exp_pass:
-                util.save2txt("desc.txt",jobObj.desciption)
-                llm.llm_seq(jobObj.desciption) 
-            else:
-                u_input = input("⚠  Please review the years of experiences. Still need a summary? [Y / N]")
-                if u_input == "Y" or u_input == "y":
-                    llm.llm_seq(jobObj.desciption)
+                print(job, f"📜 Approved")
+                util.save2txt("desc.txt",job.desciption)
+                full_shortlist.append(job)
+        
+        if len(full_shortlist) > 0:    
+            # input(f"\n{"[Enter]":<7} -> Summary")
+            util.countdown("Summary  ", 5)
+            os.system('cls' if os.name == 'nt' else 'clear')
 
-
-            while True:
-                decision = input(f"\n{"[Enter]":<7} -> Next\n{"[a]":<7} -> Save to Pass List\n{"[d]":<7} -> Show Description\n")
-                match decision:
-                    case "d":
-                        print(f"\n==========   Full Description   ==========\n{jobObj.desciption}")
-                        print(f"==========     End Description      ==========\n")
-                    case "a":
-                        print(f"\n Save to Pass List")
-                        save2pass(jobObj.id)
-                        break
-                    case _:
-                        break
+        for job in full_shortlist:
+            print(job, '\n')
+            llm.llm_seq(job.desciption)
+            
+            decision = input(f"\n{"[Enter]":<7} -> 🅿️ Pass\n{"[a]":<7} -> 🔖 Save to Bookmark\n{"[e]":<7} -> 🚶 Exit\n")
+            match decision:
+                case "a":
+                    save2bookmark(job.id, str(job))
+                case "e":
+                    exit()
+                case _:
+                    save2pass(job.id)
 
             os.system('cls' if os.name == 'nt' else 'clear')
+
+
+
+    
 
 def m2_via_html():
     project_folder = Path(__file__).parent
@@ -441,7 +465,13 @@ def m2_via_html():
 
 def save2pass(ID: str):
     if not ID in util.load_text_file("pass_list.txt").split("\n"):
-        util.save2txt('pass_list.txt',f'{ID}\n')
+        with open('pass_list.txt', 'a', encoding='utf-8') as f:
+            f.write(f'{ID}\n')
+
+def save2bookmark(ID: str, txt):
+    if not ID in util.load_text_file("bookmarks.txt").split("\n"):
+        with open('bookmarks.txt', 'a', encoding='utf-8') as f:
+            f.write(f'{ID}\n')
 
 if __name__ == "__main__":
 
@@ -457,7 +487,8 @@ if __name__ == "__main__":
         print(f" 1. Auto Search via Adzuna API")
         print(f" 2. Paste via URL (WIP)")
         print(f" 3. Paste Raw Text (WIP)")
-        print(f" 4. test")
+        print(f" 4. View Bookmark")
+        print(f" 5. Test")
         mode = input()
 
         match mode:
@@ -469,6 +500,10 @@ if __name__ == "__main__":
             case "3":
                 print("WIP")
             case "4":
+                text = util.load_text_file("bookmarks.txt").split('\n')
+                for each in text:
+                    print()
+            case "5":
                 text = util.load_text_file("desc.txt")
                 llm.llm_seq(text)
             case _:

@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import sys
+import time
 
 
 def load_text_file(path):
@@ -30,3 +32,11 @@ def contains_keywords(text, keywords):
         return False
     text_lower = text.lower()
     return any(keyword.lower() in text_lower for keyword in keywords)
+
+def countdown(txt: str, seconds: int):
+    CLEAR = "\033[2K"   # wipe entire line
+    for i in range(seconds, -1, -1):
+        sys.stdout.write(CLEAR + "\r")   # clear + return to start
+        sys.stdout.write(f"{txt}Proceed in {i}...")
+        sys.stdout.flush()
+        time.sleep(1)

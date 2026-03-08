@@ -1,6 +1,15 @@
 basic prototype and plannings for Job Stream Linear (Temp Name)
 
+planned
+- browse indeed and detect clicks on job post to auto analyse?
+- anti bot detection measure
+- cover letter generation
+- unmatched skillset statics
+
 changelog
+- 08/03
+  - added llm suggestion and scoring
+  - restructured into batch process
 - 07/03
   - auto compare for personal capabilities to the job requirement
 - 06/03

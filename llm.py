@@ -66,11 +66,11 @@ def parse_response(text):
         if each <= len(skills)-1 and skills[each].lower() in pp: 
             check_L = "  ✔  " 
         else: 
-            check_L = "  - "
+            check_L = "  -  "
         if each <= len(opt_skills)-1 and opt_skills[each].lower() in pp: 
             check_R = "  ✔  " 
         else: 
-            check_R = "  - "
+            check_R = "  -  "
         left = check_L + skills[each] if each <= len(skills)-1 else ""
         right = check_R + opt_skills[each] if each <= len(opt_skills)-1 else ""
 
@@ -80,7 +80,6 @@ def parse_response(text):
     print(f"● Responsibilities")
     for each in responsibilities:
         print(f"  - {each}")
-    print()
 
     exp_years = resp.get('min_experience_years')
     if exp_years:
