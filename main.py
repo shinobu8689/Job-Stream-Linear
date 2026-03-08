@@ -8,34 +8,22 @@ import re
 import time
 from pathlib import Path
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
-
-
+import llm
+import util
 
 headers = {"User-Agent": "Mozilla/5.0"}
 
-PARAM_FILE = "param.txt"
 url = "https://api.adzuna.com/v1/api/jobs/au/search/"
 
 def load_api_param():
-    if not os.path.exists(PARAM_FILE): 
-        raise FileNotFoundError(f"Parameter file '{PARAM_FILE}' not found. Please create the file with your app_id and app_key.")
+    if not os.path.exists("param.txt"): 
+        raise FileNotFoundError(f"Parameter file '{"param.txt"}' not found. Please create the file with your app_id and app_key.")
     else:
-        with open(PARAM_FILE, "r") as f:  lines = f.readlines()
+        with open("param.txt", "r") as f:  lines = f.readlines()
         app_id = lines[0].strip() if len(lines) > 0 else ""
         app_key = lines[1].strip() if len(lines) > 1 else ""
 
     return app_id, app_key
-
-def days_to_today(time_str):
-    created_time = datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-
-    delta = now - created_time
-    return delta.days
-
-def parse_date(time_str):
-    created_time = datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    return created_time.strftime("%d/%m/%Y")
 
 FLUFF_KEYWORDS = [
     "equal opportunity",
@@ -83,17 +71,6 @@ def clean_section(section):
             p.decompose()
 
     return section
-
-def contains_keywords(text, keywords):
-    if not text:
-        return False
-
-    text_lower = text.lower()
-    return any(keyword.lower() in text_lower for keyword in keywords)
-
-SKILL_KEYWORDS = ["requirement", "certification", "tech stack", "skill", "responsibilities", "nice to have", "must have"]
-SENIORITY_KEYWORDS = [ "senior", "lead", "principal", "manager", "Level 2", "Director"]
-NON_PREFERED_KEYWORDS = [ "vehicle", "travel", "Driving License", "NV1 Clearance", "NV1"]
 
 WORD_NUM_PATTERN = r"(one|two|three|four|five|six|seven|eight|nine|ten)"
 DIGIT_PATTERN = r"\d+"
@@ -175,64 +152,11 @@ def extract_experience(text):
 
     return results
 
-def analyze_with_llm(text, model="gemma3:12b"):
-    print("⟲ Generating analysis...")
-
-    prompt = f"""
-Extract the following from the job description. Return STRICT valid JSON only. 
-
-{{
-  "skills": [string],
-  "optional_skills": [string],
-  "min_experience_years": [
-    {{
-      "phase": string,
-      "min_years": number,
-      "max_years": number
-    }}
-  ] or null,
-  "responsibilities": [string],
-  "japan_career_relevance": {{
-    "score": float (0 - 1),
-    "verdict": "Helpful" | "Neutral" | "Risky",
-    "reason": string
-  }}
-}}
-
-Rules:
-- Use numbers for years (no text like "1 year").
-- If only a minimum is mentioned, omit max_years.
-- If no experience requirement is mentioned, return null.
-- Remove marketing or culture statements.
-- Keep skills concise (technologies, tools, frameworks).
-    
-Job description:
-{text}
-"""
-
-    response = requests.post(       # to local ollama LLM
-        "http://localhost:11434/api/generate",
-        json={
-            "model": model,
-            "prompt": prompt,
-            "max_length": 1024,
-            "stream": False
-        }
-    )
-
-    return json.loads(response.text)['response'][7:-3]    # text need to be parsed
-
-def hyperlink(label, url):
-    ESC = "\033]"
-    BEL = "\007"
-    return f"{ESC}8;;{url}{BEL}{label}{ESC}8;;{BEL}"
-
 def block_redirect(route, request):
     if request.is_navigation_request() and request.redirected_from:
         route.abort()
     else:
         route.continue_()
-
 
 def get_full_description(jobObj):  
 
@@ -276,7 +200,7 @@ def get_full_description(jobObj):
             print("\n⚠  Failed to get full description. Please check with Playwright Browser.")
             input("Please paste content into content.txt'. Then press enter.")
 
-            manual_description = load_text_file("content.txt")
+            manual_description = util.load_text_file("content.txt")
             if manual_description != "":
                 description = manual_description                       
                 success = True
@@ -289,10 +213,6 @@ def get_full_description(jobObj):
         browser.close()
 
         return description, success
-
-def save2txt(filename, content):
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(str(content))
 
 def clean_url(raw_url: str) -> str:
     parsed = urlparse(raw_url)
@@ -313,14 +233,13 @@ def clean_url(raw_url: str) -> str:
         parsed.fragment
     ))
 
-
 def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM usage and web call
     reason = ""
     if job.days_ago > 30: # old job
         reason = reason + f"⚠  Job is older than 30 days.\n"
-    if contains_keywords(job.title.lower(), SENIORITY_KEYWORDS):
+    if util.contains_keywords(job.title.lower(), SENIORITY_KEYWORDS):
         reason = reason + f"⚠  Contains senior-level keyword ({[k for k in SENIORITY_KEYWORDS if k in job.title.lower()]}).\n"
-    if contains_keywords(job.desciption, NON_PREFERED_KEYWORDS):
+    if util.contains_keywords(job.desciption, NON_PREFERED_KEYWORDS):
         reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in job.desciption]}).\n"
                 
     if reason != "":
@@ -331,18 +250,14 @@ def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM u
 
 def description_checker(JobDesc: str):     # filter with full description  # reduce LLM usage
 
-    desc_pass = True
-    exp_pass = True
-
+    desc_pass, exp_pass = True, True
 
     years_of_experience = extract_experience(JobDesc)   #yrs of exp check
     if years_of_experience:
         print(f"""Experience Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
-        
         for exp in years_of_experience:
             if exp['min_years'] > 2:
-                tag = "⚠ " 
-                exp_pass = False
+                tag, exp_pass = "⚠ ", False
             else:
                 tag = "- "
             if exp["type"] == "range":  print(f"{tag}{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)")
@@ -351,10 +266,9 @@ def description_checker(JobDesc: str):     # filter with full description  # red
 
 
     reason = ""
-    if not contains_keywords(JobDesc, SKILL_KEYWORDS):
+    if not util.contains_keywords(JobDesc, SKILL_KEYWORDS):
         reason = reason + f"⚠  Description might not include requirements or specification.\n"
-        desc_pass = False
-    if contains_keywords(JobDesc, NON_PREFERED_KEYWORDS):
+    if util.contains_keywords(JobDesc, NON_PREFERED_KEYWORDS):
         reason = reason + f"⚠  Contains non-prefered keyword ({[k for k in NON_PREFERED_KEYWORDS if k in JobDesc]}).\n"
         desc_pass = False
 
@@ -364,18 +278,23 @@ def description_checker(JobDesc: str):     # filter with full description  # red
 
     return desc_pass, exp_pass
     
-    
+def skippping_seq(ID):
+    print(f"Skipping...")
+    print(f"Saved to Pass List")
+    save2pass(ID)
+    time.sleep(4)
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 class JobPosting:
     def __init__(self, title, company, location, date_created, url, description, contract_time = "N/A"):
         self.title = title
         self.company = company['display_name']
         self.location = location['display_name']
-        self.date_created = parse_date(date_created)
+        self.date_created = util.parse_date(date_created)
         self.url = url
         self.id = url[self.url.rfind("/")+1:self.url.find("?")]
         self.contract_time = contract_time
-        self.days_ago = days_to_today(date_created)
+        self.days_ago = util.days_to_today(date_created)
         self.desciption = description
 
     def __str__(self):
@@ -383,9 +302,9 @@ class JobPosting:
         else:                   day_str = f"{self.days_ago} days ago"
         return f"""
  ● {self.title} - {self.company}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ID: {hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)} ━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ID: {util.hyperlink(self.url[self.url.rfind("/")+1:self.url.find("?")], self.url)} ━━━
 {'Contract Type':<20}: {self.contract_time}
-{'Location':<20}: {hyperlink(self.location, clean_url(f"https://www.google.com/search?q={self.location}"))}
+{'Location':<20}: {util.hyperlink(self.location, clean_url(f"https://www.google.com/search?q={self.location}"))}
 {'Posted':<20}: {self.date_created} ({day_str})
 """
 
@@ -400,7 +319,9 @@ def m1_via_api():
         "app_key": app_key,
         "what": position,
         "where": "melbourne",
-        "results_per_page": 10,
+        "what_exclude": "senior lead principal manager Director",
+        "max_days_old": 30,
+        "results_per_page": 50,
         "distance": 25
     }
 
@@ -420,7 +341,7 @@ def m1_via_api():
             job_counter += 1
             if job['category']['label'] != "IT Jobs": continue  # filter non-IT Job, this should be modularised as an option
 
-            print(f"Found {job_counter}/{data['count']} job listings (Page {page_num}) for '{params['what']}' in '{params['where']}' within {params['distance']}km radius:\n")
+            print(f"Found {job_counter}/{data['count']} job listings (Page {page_num}) for '{params['what']}' in '{params['where']}' within {params['distance']}km radius:")
 
             jobObj = JobPosting(
                 title = job.get('title'),
@@ -434,18 +355,14 @@ def m1_via_api():
 
             print(jobObj)
 
-            prev_pass = not jobObj.id in load_text_file("pass_list.txt").split("\n")
+            prev_pass = not jobObj.id in util.load_text_file("pass_list.txt").split("\n")
             if not prev_pass:
-                print(f"Viewed Previously, Skipping...")
-                time.sleep(5)
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue
 
             info_pass = info_checker(jobObj)
             if not info_pass:
-                print(f"Skipping...")
-                time.sleep(5)
-                os.system('cls' if os.name == 'nt' else 'clear')
+                skippping_seq(jobObj.id)
                 continue
 
             jobObj.desciption, full_desc_success = get_full_description(jobObj)
@@ -453,34 +370,23 @@ def m1_via_api():
             if not full_desc_success:
                 continue
 
-
             desc_pass, exp_pass = description_checker(jobObj.desciption)
             if not desc_pass:
-                print(f"Skipping...")
-                time.sleep(5)
-                os.system('cls' if os.name == 'nt' else 'clear')
+                skippping_seq(jobObj.id)
                 continue
             
 
             if exp_pass:
-                llm_result = analyze_with_llm(jobObj.desciption)
-                save2txt("llm_json.txt", llm_result)
-                parse_response(llm_result)
-                
-                
+                util.save2txt("desc.txt",jobObj.desciption)
+                llm.llm_seq(jobObj.desciption) 
             else:
-                if input("⚠  Please review the years of experiences. Still need a summary? [Y / N]") == "Y":
-                    llm_result = analyze_with_llm(jobObj.desciption)              
-                    save2txt("llm_json.txt", llm_result)
-                    parse_response(llm_result)
-
-        
-
-
+                u_input = input("⚠  Please review the years of experiences. Still need a summary? [Y / N]")
+                if u_input == "Y" or u_input == "y":
+                    llm.llm_seq(jobObj.desciption)
 
 
             while True:
-                decision = input(f"\n Options:\nEnter -> Next\na -> Save to Pass List\nd -> Show Description\n")
+                decision = input(f"\n{"[Enter]":<7} -> Next\n{"[a]":<7} -> Save to Pass List\n{"[d]":<7} -> Show Description\n")
                 match decision:
                     case "d":
                         print(f"\n==========   Full Description   ==========\n{jobObj.desciption}")
@@ -491,11 +397,6 @@ def m1_via_api():
                         break
                     case _:
                         break
-
-
-
-
-            #implement LLM with getting the matching score of my capability and the job requirement, and the improvment point to reach this job 
 
             os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -538,78 +439,16 @@ def m2_via_html():
 
     # Proceed to LLM Filter (extracted refactor code from mode 1)
 
-def load_text_file(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-
 def save2pass(ID: str):
-    if not ID in load_text_file("pass_list.txt").split("\n"):
-        with open('pass_list.txt', 'a', encoding='utf-8') as f:
-            f.write(f'{ID}\n')
-
-def parse_response(text):
-    
-    # text = load_text_file("llm_json.txt")
-    resp = json.loads(text)
-
-    pp = load_text_file("personal_profile.txt").split("\n")
-
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Score: --% ━━━")
-
-    skills = resp.get('skills')
-    opt_skills = resp.get('optional_skills')
-    print(f'{"● Skills":<30}{"● Nice to have":<30}')
-    for each in range(max(len(skills), len(opt_skills))):
-        if each <= len(skills)-1 and skills[each] in pp: 
-            check_L = "  ✔  " 
-        else: 
-            check_L = "   - "
-        if each <= len(opt_skills)-1 and opt_skills[each] in pp: 
-            check_R = "  ✔  " 
-        else: 
-            check_R = "   - "
-        left = check_L + skills[each] if each <= len(skills)-1 else ""
-        right = check_R + opt_skills[each] if each <= len(opt_skills)-1 else ""
-
-
-
-        print(f"{left:<30}{right:<30}")
-    print()
-
-    responsibilities = resp.get('responsibilities')
-    print(f"● Responsibilities")
-    for each in responsibilities:
-        print(f"  - {each}")
-    print()
-
-    exp_years = resp.get('min_experience_years')
-    if exp_years:
-        print("● Experience Req")
-        for each in exp_years:
-            phase = each.get("phase", "Unknown")
-            min_years = each.get("min_years")
-            max_years = each.get("max_years")
-
-            if max_years is None:
-                print(f"  - {phase} ({min_years} years)")
-            else:
-                print(f"  - {phase} ({min_years} - {max_years} years)")
-
-    relevance = resp.get('japan_career_relevance')
-    print(f"""
-● Career Relevance: {int(float(relevance.get('score')*100))}% ({relevance.get('verdict')})
-{relevance.get('reason')}
-""")
-    
-    print(f"● Improvement Suggestion")
-    print("")
-
-    return
-
+    if not ID in util.load_text_file("pass_list.txt").split("\n"):
+        util.save2txt('pass_list.txt',f'{ID}\n')
 
 if __name__ == "__main__":
 
     # init info for all modes
+    SKILL_KEYWORDS = ["requirement", "certification", "tech stack", "skill", "responsibilities", "nice to have", "must have"]
+    SENIORITY_KEYWORDS = util.load_text_file("seniority_word_list.txt").split("\n")
+    NON_PREFERED_KEYWORDS = [ "vehicle", "travel", "Driving License", "NV1 Clearance", "NV1"]
     now = datetime.now(timezone.utc)
 
     mode = None
@@ -630,8 +469,8 @@ if __name__ == "__main__":
             case "3":
                 print("WIP")
             case "4":
-                text = load_text_file("llm_json.txt")
-                parse_response(text)
+                text = util.load_text_file("desc.txt")
+                llm.llm_seq(text)
             case _:
                 print("Invalid mode selected. Exiting.")
                 exit()
