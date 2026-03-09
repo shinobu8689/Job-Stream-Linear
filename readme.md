@@ -3,13 +3,14 @@ basic prototype and plannings for Job Stream Linear (Temp Name)
 planned
 - browse jobs site and detect clicks on job post to auto analyse?
 - anti bot detection measure
-- cover letter generation fine tuning
+- merge cover letter into main workflow
 - unmatched skillset statics and LLM personal developement suggestion
 
 changelog
 - 09/03
   - personal_profile.txt swtiched to using json
-  - basic cover letter generation
+  - cover letter generation
+  - jobs info are all under job_json.txt
 - 08/03
   - added llm suggestion and scoring
   - restructured into batch process, redesigned print arrangement

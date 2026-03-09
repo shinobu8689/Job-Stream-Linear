@@ -13,14 +13,30 @@ class JobPosting:
         self.contract_time = contract_time
         self.days_ago = util.days_to_today(date_created)
         self.desciption = description
+
+        # info from llm parse desc
+        self.skills = None
+        self.opt_skills = None
         self.yrs_exp = None
+        self.responsibilities = None
+        self.company_focus = None
+    
+    def from_llm(self, content: json):
+        self.skills = content.get("skills")
+        self.opt_skills = content.get("optional_skills")
+        self.yrs_exp = content.get("min_experience_years")
+        self.responsibilities = content.get("responsibilities")
+        self.company_focus = content.get("company_focus")
+
+    def set_yrs_exp(self, yrs_exp):
+        self.yrs_exp = yrs_exp
 
     def print_yrs_exp(self):
         yrs = ""
         for exp in self.yrs_exp:
             if exp['min_years'] > 2:    yrs = yrs + "  ⚠ "
             else:                       yrs = yrs + "  - "
-            if exp["type"] == "range":  yrs = yrs + f"{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)\n"
+            if exp['max_years']:        yrs = yrs + f"{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)\n"
             else:                       yrs = yrs + f"{exp['phrase']} ({exp['min_years']} years)\n"
         return yrs
 

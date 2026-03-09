@@ -1,4 +1,5 @@
 import json
+import re
 import requests
 from jobObj import JobPosting
 import util
@@ -51,7 +52,13 @@ Job description:
         }
     )
 
-    return json.loads(response.text)['response'][7:-3]
+
+    text = json.loads(response.text)['response']
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if match:   data = match.group(1)
+    else:       raise ValueError("No JSON block found")
+
+    return data
 
 def parse_response(text):
 
@@ -109,17 +116,19 @@ def parse_response(text):
 ● Career Relevance: {int(float(relevance.get('score')*100))}% ({relevance.get('verdict')})
 {relevance.get('reason')}
 """)
-    
+
 
 def suggestion_with_llm(text, model="gemma3:12b"):
     
     print(f"⟲ Generating Sugggestions...")
 
-    capabilities = set(util.load_text_file("personal_profile.txt").lower().split("\n"))
+    pp = json.loads(util.load_text_file("personal_profile.txt"))
+    capabilities = pp.get('skills')
+    capabilities = set([s.lower() for s in capabilities])
+    projects = pp.get('projects')
+
     skills = json.loads(text.lower()).get('skills')
     opt_skills = json.loads(text.lower()).get('optional_skills')
-
-
     skill_set = set(skills + opt_skills)
 
     # union of both sets
@@ -162,6 +171,9 @@ Job summary:
 Skill comparison data:
 {combined_json}
 
+my projects:
+{projects}
+
 Give a matching score and a one sentence suggestion on what skill I should improve to better match this job.
 """
 
@@ -175,7 +187,12 @@ Give a matching score and a one sentence suggestion on what skill I should impro
         }
     )
 
-    return json.loads(response.text)['response'][7:-4]
+    text = json.loads(response.text)['response']
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if match:   data = match.group(1)
+    else:       raise ValueError("No JSON block found")
+
+    return data
 
 def parse_improvement(text):
     resp = json.loads(text)
@@ -195,34 +212,24 @@ def parse_improvement(text):
     print(f"{resp.get('suggestion')}")
 
 
-def llm_seq(desc):
+def llm_seq(job: JobPosting):
+    desc = job.desciption
+
     llm_result = analyse_with_llm(desc)
-    util.save2txt("llm_json.txt", llm_result)
     parse_response(llm_result)
 
+    job.from_llm(json.loads(llm_result))
+    job.to_json()
+
     llm_suggestion = suggestion_with_llm(llm_result)
-    util.save2txt("llm_sugg.txt", llm_suggestion)
     parse_improvement(llm_suggestion)
 
-def generates_cover_letter(job: json, person: json, llm_analyitcs: json, model="gemma3:12b"):
+def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
 
+    hiring_platform = input("Hiring Platform? ")
 
     print("⟲ Generating Opening Paragraph...")
-
-    prompt = f"""
-Write the opening paragraph for a cover letter.
-
-Job title: {job.get('title')}
-Company: {job.get('company')}
-
-Candidate background:
-- Computer Science graduate
-- Personal Developer
-- Builds automation tools and data projects
-
-Keep it concise and professional.
-    """
-
+    prompt = util.load_text_file("prompt_p1.txt").format(title=job.get('title'), company=job.get('company'), hiring_platform=hiring_platform)
     response = requests.post(       # to local ollama LLM   
         "http://localhost:11434/api/generate",
         json={
@@ -232,32 +239,19 @@ Keep it concise and professional.
             "stream": False
         }
     )
-
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(json.loads(response.text)['response'])
-    print()
+    p1 = json.loads(response.text)['response']
+    print(p1, "\n")
 
-
-
-
-
-    # TODO: create overlap skills combine here
-    print("⟲ Generating Skills/Project Hightlighs...")      # only give LLM the skills that the job and person overlaps.
-    prompt = f"""
-Write a paragraph describing relevant technical skills.
-
-Job requires:
-{llm_analyitcs.get('skills')}
-
-Candidate skills:
-{person.get('skills')}
-
-Candidate projects:
-{person.get('projects')}
-
-Focus on relevant overlap and practical experience.
-    """
-
+    job_skills = job.get('skills')
+    job_skills = [s.lower() for s in job_skills]
+    job_opt_skills = job.get('opt_skills')
+    job_opt_skills = [s.lower() for s in job_opt_skills]
+    capabilities = person.get('skills')
+    capabilities = [s.lower() for s in capabilities]
+    combined_set = set(job_skills + job_opt_skills) & set(capabilities)
+    print("⟲ Generating Skills/Project Hightlighs...")
+    prompt = util.load_text_file("prompt_p2.txt").format(combined_set=combined_set, projects=person.get('projects'))
     response = requests.post(       # to local ollama LLM   
         "http://localhost:11434/api/generate",
         json={
@@ -267,27 +261,12 @@ Focus on relevant overlap and practical experience.
             "stream": False
         }
     )
-
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(json.loads(response.text)['response'])
-    print()
+    p2 = json.loads(response.text)['response']
+    print(p2, "\n")
 
-
-
-
-
-    # TODO: Candidate interests should be in pp.txt
-    print("⟲ Generating \"Why this company\" talk...")      # only give LLM the skills that the job and person overlaps.
-    prompt = f"""
-Write a paragraph explaining why the candidate is interested in the company.
-
-Company focus:
-{job.get('company_focus')}
-
-Candidate interests:
-automation, data tools, developer tooling
-    """
-
+    print("⟲ Generating \"Why this company\" talk...")
+    prompt = util.load_text_file("prompt_p3.txt").format(company_focus=job.get('company_focus'), company=job.get('company'))
     response = requests.post(       # to local ollama LLM   
         "http://localhost:11434/api/generate",
         json={
@@ -297,21 +276,12 @@ automation, data tools, developer tooling
             "stream": False
         }
     )
-
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(json.loads(response.text)['response'])
-    print()
-
-
-
-
+    p3 = json.loads(response.text)['response']
+    print(p3, "\n")
 
     print("⟲ Generating Closing Paragraph...")  
-    prompt = f"""
-Write a short professional closing paragraph for a cover letter.
-Express interest in discussing the role further.
-    """
-
+    prompt = util.load_text_file("prompt_p4.txt").format(company=job.get('company'))
     response = requests.post(       # to local ollama LLM   
         "http://localhost:11434/api/generate",
         json={
@@ -321,7 +291,13 @@ Express interest in discussing the role further.
             "stream": False
         }
     )
-
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(json.loads(response.text)['response'])
-    print()
+    p4 = json.loads(response.text)['response']
+    print(p4, "\n")
+
+    sign = util.load_text_file("signature.txt")
+    print(sign)
+
+    util.save2txt(f"cover_letter.txt", p1 + "\n\n" + p2+ "\n\n" + p3 + "\n\n" + p4 + "\n\n" + sign)
+
+    print("\nSaved as cover_leter.txt\n")

@@ -1,18 +1,18 @@
 # Ignore config files
 param.txt
-llm_json.txt
-desc.txt
 content.txt
 demo.txt
 personal_profile.txt
 pass_list.txt
-llm_sugg.txt
 seniority_word_list.txt
 bookmarks.txt
-main - Copy.py
 job_json.txt
-
-
+prompt_p1.txt
+prompt_p2.txt
+prompt_p3.txt
+prompt_p4.txt
+signature.txt
+cover_letter.txt
 
 # Ignore folders
 __pycache__

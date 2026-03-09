@@ -141,14 +141,12 @@ def extract_experience(text):
                 "phrase": match.group(0),
                 "min_years": convert(min_val),
                 "max_years": convert(max_val),
-                "type": "range"
             })
         else:
             results.append({
                 "phrase": match.group(0),
                 "min_years": convert(single_val),
                 "max_years": None,
-                "type": "single"
             })
 
     return results
@@ -275,8 +273,7 @@ def m1_via_api():
 
     while limit == 99999 or min(results_per_page*page_num, data['count']) <= limit:
 
-        basic_shortlist = []
-        full_shortlist = []
+        shortlist = []
 
         page_num += 1
         response = requests.get(url + str(page_num), params=params)
@@ -318,19 +315,19 @@ def m1_via_api():
 
             print(jobObj, f"📜 Approved")
 
-            basic_shortlist.append(jobObj)
+            shortlist.append(jobObj)
         
-        if len(basic_shortlist) > 0:
+        if len(shortlist) > 0:
             # input(f"\n{"[Enter]":<7} -> Description Check")
             util.countdown("Description Check ", 5)
             os.system('cls' if os.name == 'nt' else 'clear')
-            print(f""" ● Description Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""")
             
 
-        for job in basic_shortlist:
+        for job in shortlist:
 
             job.desciption, full_desc_success = get_full_description(job) # TODO: this need to be replace with a more anti bot version
-            desc_pass, exp_pass, job.yrs_exp, reason = description_checker(job.desciption)
+            desc_pass, exp_pass, yrs_exp, reason = description_checker(job.desciption)
+            job.set_yrs_exp(yrs_exp)
 
             if not desc_pass or not exp_pass:
                 print(job, f" 🅿️ Saved")
@@ -339,17 +336,9 @@ def m1_via_api():
                 continue
             if exp_pass:
                 print(job, f"📜 Approved")
-                util.save2txt("desc.txt",job.desciption)
                 job.to_json()
-                full_shortlist.append(job)
         
-        if len(full_shortlist) > 0:    
-            util.countdown("Summary  ", 5)
-            os.system('cls' if os.name == 'nt' else 'clear')
-
-        for job in full_shortlist:
-            print(job, '\n')
-            llm.llm_seq(job.desciption)
+            llm.llm_seq(job)
             
             decision = input(f"\n{"[Enter]":<7} -> 🅿️ Pass\n{"[a]":<7} -> 🔖 Save to Bookmark\n{"[e]":<7} -> 🚶 Exit\n")
             match decision:
@@ -429,6 +418,7 @@ if __name__ == "__main__":
         print(f" 3. Paste Raw Text (WIP)")
         print(f" 4. View Bookmark")
         print(f" 5. Test LLM")
+        print(f" 6. cover letter")
         mode = input()
 
         match mode:
@@ -444,10 +434,11 @@ if __name__ == "__main__":
                 for each in text:
                     print()
             case "5":
+                break
+            case "6":
                 job = json.loads(util.load_text_file("job_json.txt"))
                 person = json.loads(util.load_text_file("personal_profile.txt"))
-                llm_analytics = json.loads(util.load_text_file("llm_json.txt")) 
-                llm.generates_cover_letter(job, person, llm_analytics)
+                llm.generates_cover_letter(job, person)
             case _:
                 print("Invalid mode selected. Exiting.")
                 exit()
