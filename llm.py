@@ -1,5 +1,6 @@
 import json
 import requests
+from jobObj import JobPosting
 import util
 
 
@@ -24,7 +25,8 @@ Extract the following from the job description. Return STRICT valid JSON only.
     "score": float (0 - 1),
     "verdict": "Helpful" | "Neutral" | "Risky",
     "reason": string
-  }}
+  }},
+  "company_focus": string
 }}
 
 Rules:
@@ -55,7 +57,8 @@ def parse_response(text):
 
     resp = json.loads(text)
 
-    pp = util.load_text_file("personal_profile.txt").lower().split("\n")
+    pp = json.loads(util.load_text_file("personal_profile.txt")).get("skills")
+    pp = [s.lower() for s in pp]
 
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
@@ -76,10 +79,17 @@ def parse_response(text):
 
         print(f"{left:<35}{right:<35}")
 
+    print()
+    focus = resp.get("company_focus")
+    print(f"● Company Focus: {focus}")
+
+    print()
     responsibilities = resp.get('responsibilities')
     print(f"● Responsibilities")
     for each in responsibilities:
         print(f"  - {each}")
+
+    print()
 
     exp_years = resp.get('min_experience_years')
     if exp_years:
@@ -193,3 +203,125 @@ def llm_seq(desc):
     llm_suggestion = suggestion_with_llm(llm_result)
     util.save2txt("llm_sugg.txt", llm_suggestion)
     parse_improvement(llm_suggestion)
+
+def generates_cover_letter(job: json, person: json, llm_analyitcs: json, model="gemma3:12b"):
+
+
+    print("⟲ Generating Opening Paragraph...")
+
+    prompt = f"""
+Write the opening paragraph for a cover letter.
+
+Job title: {job.get('title')}
+Company: {job.get('company')}
+
+Candidate background:
+- Computer Science graduate
+- Personal Developer
+- Builds automation tools and data projects
+
+Keep it concise and professional.
+    """
+
+    response = requests.post(       # to local ollama LLM   
+        "http://localhost:11434/api/generate",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_length": 1024,
+            "stream": False
+        }
+    )
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(json.loads(response.text)['response'])
+    print()
+
+
+
+
+
+    # TODO: create overlap skills combine here
+    print("⟲ Generating Skills/Project Hightlighs...")      # only give LLM the skills that the job and person overlaps.
+    prompt = f"""
+Write a paragraph describing relevant technical skills.
+
+Job requires:
+{llm_analyitcs.get('skills')}
+
+Candidate skills:
+{person.get('skills')}
+
+Candidate projects:
+{person.get('projects')}
+
+Focus on relevant overlap and practical experience.
+    """
+
+    response = requests.post(       # to local ollama LLM   
+        "http://localhost:11434/api/generate",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_length": 1024,
+            "stream": False
+        }
+    )
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(json.loads(response.text)['response'])
+    print()
+
+
+
+
+
+    # TODO: Candidate interests should be in pp.txt
+    print("⟲ Generating \"Why this company\" talk...")      # only give LLM the skills that the job and person overlaps.
+    prompt = f"""
+Write a paragraph explaining why the candidate is interested in the company.
+
+Company focus:
+{job.get('company_focus')}
+
+Candidate interests:
+automation, data tools, developer tooling
+    """
+
+    response = requests.post(       # to local ollama LLM   
+        "http://localhost:11434/api/generate",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_length": 1024,
+            "stream": False
+        }
+    )
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(json.loads(response.text)['response'])
+    print()
+
+
+
+
+
+    print("⟲ Generating Closing Paragraph...")  
+    prompt = f"""
+Write a short professional closing paragraph for a cover letter.
+Express interest in discussing the role further.
+    """
+
+    response = requests.post(       # to local ollama LLM   
+        "http://localhost:11434/api/generate",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_length": 1024,
+            "stream": False
+        }
+    )
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(json.loads(response.text)['response'])
+    print()

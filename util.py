@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 import sys
 import time
 
@@ -40,3 +41,22 @@ def countdown(txt: str, seconds: int):
         sys.stdout.write(f"{txt}Proceed in {i}...")
         sys.stdout.flush()
         time.sleep(1)
+
+def clean_url(raw_url: str) -> str:
+        parsed = urlparse(raw_url)
+
+        # Parse existing query params
+        query_dict = parse_qs(parsed.query)
+
+        # Re-encode query params safely
+        encoded_query = urlencode(query_dict, doseq=True)
+
+        # Rebuild the full URL
+        return urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            encoded_query,
+            parsed.fragment
+        ))

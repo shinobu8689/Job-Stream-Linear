@@ -8,7 +8,7 @@ import os
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
+from jobObj import JobPosting
 import llm
 import util
 
@@ -215,25 +215,6 @@ def get_full_description(jobObj):
 
         return description, success
 
-def clean_url(raw_url: str) -> str:
-    parsed = urlparse(raw_url)
-
-    # Parse existing query params
-    query_dict = parse_qs(parsed.query)
-
-    # Re-encode query params safely
-    encoded_query = urlencode(query_dict, doseq=True)
-
-    # Rebuild the full URL
-    return urlunparse((
-        parsed.scheme,
-        parsed.netloc,
-        parsed.path,
-        parsed.params,
-        encoded_query,
-        parsed.fragment
-    ))
-
 def info_checker(job: JobPosting):  # filter from job basic info to reduce LLM usage and web call
     reason = ""
     if job.days_ago > 30: # old job
@@ -267,44 +248,6 @@ def description_checker(JobDesc: str):     # filter with full description  # red
         desc_pass = False
 
     return desc_pass, exp_pass, yrs_of_exp, reason
-
-class JobPosting:
-    def __init__(self, title, company, location, date_created, url, description, contract_time = "N/A"):
-        self.title = title
-        self.company = company['display_name']
-        self.location = location['display_name']
-        self.date_created = util.parse_date(date_created)
-        self.url = url
-        self.id = url[self.url.rfind("/") + 1 : self.url.find("?") if "?" in self.url else None]
-        self.contract_time = contract_time
-        self.days_ago = util.days_to_today(date_created)
-        self.desciption = description
-        self.yrs_exp = None
-
-    def __str__(self):
-        if self.days_ago <= 0:  day_str = "Today"
-        else:                   day_str = f"{self.days_ago} days ago"
-
-        title_company = f"{self.title} - {self.company}"
-        if len(title_company) > 55:
-            title_company = title_company[:52] + "..."
-        return (
-            f"{util.hyperlink('🔗', self.url)} {self.id:<12}"
-            f"{(title_company):<60}"
-            f"{self.contract_time:<11}"
-            f"{util.hyperlink('🗺️', clean_url(f'https://www.google.com/search?q={self.location}'))} {self.location.split(", ")[0]:<15}"
-            f"{self.date_created:<10} ({day_str + ")":<12}"
-        )
-
-def parse_yrs_exp(yrs_exp):
-    yrs = ""
-    for exp in yrs_exp:
-        if exp['min_years'] > 2:    yrs = yrs + "  ⚠ "
-        else:                       yrs = yrs + "  - "
-        if exp["type"] == "range":  yrs = yrs + f"{exp['phrase']} ({exp['min_years']} - {exp['max_years']} years)\n"
-        else:                       yrs = yrs + f"{exp['phrase']} ({exp['min_years']} years)\n"
-    return yrs
-
 
 def m1_via_api():
 
@@ -391,17 +334,16 @@ def m1_via_api():
 
             if not desc_pass or not exp_pass:
                 print(job, f" 🅿️ Saved")
-                if job.yrs_exp:
-                   print(parse_yrs_exp(job.yrs_exp))
+                print(job.print_yrs_exp())
                 save2pass(job.id)
                 continue
             if exp_pass:
                 print(job, f"📜 Approved")
                 util.save2txt("desc.txt",job.desciption)
+                job.to_json()
                 full_shortlist.append(job)
         
         if len(full_shortlist) > 0:    
-            # input(f"\n{"[Enter]":<7} -> Summary")
             util.countdown("Summary  ", 5)
             os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -417,12 +359,10 @@ def m1_via_api():
                     exit()
                 case _:
                     save2pass(job.id)
+                    # unmatched skillset statics
 
             os.system('cls' if os.name == 'nt' else 'clear')
-
-
-
-    
+   
 
 def m2_via_html():
     project_folder = Path(__file__).parent
@@ -488,7 +428,7 @@ if __name__ == "__main__":
         print(f" 2. Paste via URL (WIP)")
         print(f" 3. Paste Raw Text (WIP)")
         print(f" 4. View Bookmark")
-        print(f" 5. Test")
+        print(f" 5. Test LLM")
         mode = input()
 
         match mode:
@@ -504,8 +444,10 @@ if __name__ == "__main__":
                 for each in text:
                     print()
             case "5":
-                text = util.load_text_file("desc.txt")
-                llm.llm_seq(text)
+                job = json.loads(util.load_text_file("job_json.txt"))
+                person = json.loads(util.load_text_file("personal_profile.txt"))
+                llm_analytics = json.loads(util.load_text_file("llm_json.txt")) 
+                llm.generates_cover_letter(job, person, llm_analytics)
             case _:
                 print("Invalid mode selected. Exiting.")
                 exit()
