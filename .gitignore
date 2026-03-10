@@ -13,6 +13,7 @@ prompt_p3.txt
 prompt_p4.txt
 signature.txt
 cover_letter.txt
+skills_stats.json
 
 # Ignore folders
 __pycache__

@@ -1,0 +1,30 @@
+{
+  "amazon web services": "aws",
+  "aws cloud": "aws",
+  "aws": "aws",
+
+  "react.js": "react",
+  "reactjs": "react",
+  "react": "react",
+
+  "nodejs": "node.js",
+  "node": "node.js",
+  "node.js": "node.js",
+
+  "k8s": "kubernetes",
+  "kubernetes": "kubernetes",
+
+  "python3": "python",
+  "py": "python",
+  "python": "python",
+
+  "javascript": "javascript",
+  "js": "javascript",
+
+  "restful apis": "RESTful API",
+  "rest api": "RESTful API",
+  "rest apis": "RESTful API",
+  "rest": "RESTful API",
+  "restful": "RESTful API"
+   
+}

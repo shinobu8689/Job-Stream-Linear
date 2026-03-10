@@ -38,7 +38,7 @@ def countdown(txt: str, seconds: int):
     CLEAR = "\033[2K"   # wipe entire line
     for i in range(seconds, -1, -1):
         sys.stdout.write(CLEAR + "\r")   # clear + return to start
-        sys.stdout.write(f"{txt}Proceed in {i}...")
+        sys.stdout.write(f"{txt}proceed in {i}...")
         sys.stdout.flush()
         time.sleep(1)
 

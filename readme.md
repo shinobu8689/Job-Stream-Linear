@@ -1,12 +1,18 @@
 basic prototype and plannings for Job Stream Linear (Temp Name)
 
-planned
+planned / todo
 - browse jobs site and detect clicks on job post to auto analyse?
 - anti bot detection measure
-- merge cover letter into main workflow
-- unmatched skillset statics and LLM personal developement suggestion
+- change using txt file type to json
+- skillset statics
+  - LLM personal developement suggestion using skillset statics
+  - adapt normalise keywords
 
 changelog
+- 10/03
+  - skills keywords normalise prototype
+  - implemented skillset statics
+  - merge cover letter into main workflow
 - 09/03
   - personal_profile.txt swtiched to using json
   - cover letter generation

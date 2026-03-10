@@ -228,9 +228,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
 
     hiring_platform = input("Hiring Platform? ")
 
-    print("⟲ Generating Opening Paragraph...")
+    print("⟲ Generating Opening Paragraph... (1/4)")
     prompt = util.load_text_file("prompt_p1.txt").format(title=job.get('title'), company=job.get('company'), hiring_platform=hiring_platform)
-    response = requests.post(       # to local ollama LLM   
+    response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
             "model": model,
@@ -239,9 +239,7 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
             "stream": False
         }
     )
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     p1 = json.loads(response.text)['response']
-    print(p1, "\n")
 
     job_skills = job.get('skills')
     job_skills = [s.lower() for s in job_skills]
@@ -250,9 +248,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     capabilities = person.get('skills')
     capabilities = [s.lower() for s in capabilities]
     combined_set = set(job_skills + job_opt_skills) & set(capabilities)
-    print("⟲ Generating Skills/Project Hightlighs...")
+    print("⟲ Generating Skills/Project Hightlighs... (2/4)")
     prompt = util.load_text_file("prompt_p2.txt").format(combined_set=combined_set, projects=person.get('projects'))
-    response = requests.post(       # to local ollama LLM   
+    response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
             "model": model,
@@ -261,13 +259,11 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
             "stream": False
         }
     )
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     p2 = json.loads(response.text)['response']
-    print(p2, "\n")
 
-    print("⟲ Generating \"Why this company\" talk...")
+    print("⟲ Generating \"Why this company\"... (3/4)")
     prompt = util.load_text_file("prompt_p3.txt").format(company_focus=job.get('company_focus'), company=job.get('company'))
-    response = requests.post(       # to local ollama LLM   
+    response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
             "model": model,
@@ -276,13 +272,11 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
             "stream": False
         }
     )
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     p3 = json.loads(response.text)['response']
-    print(p3, "\n")
 
-    print("⟲ Generating Closing Paragraph...")  
+    print("⟲ Generating Closing Paragraph... (4/4)")  
     prompt = util.load_text_file("prompt_p4.txt").format(company=job.get('company'))
-    response = requests.post(       # to local ollama LLM   
+    response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
             "model": model,
@@ -291,13 +285,10 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
             "stream": False
         }
     )
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     p4 = json.loads(response.text)['response']
-    print(p4, "\n")
 
     sign = util.load_text_file("signature.txt")
-    print(sign)
 
     util.save2txt(f"cover_letter.txt", p1 + "\n\n" + p2+ "\n\n" + p3 + "\n\n" + p4 + "\n\n" + sign)
 
-    print("\nSaved as cover_leter.txt\n")
+    print("📎 Completed.  Saved as cover_leter.txt\n")
