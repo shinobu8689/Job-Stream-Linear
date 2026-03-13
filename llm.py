@@ -22,11 +22,6 @@ Extract the following from the job description. Return STRICT valid JSON only.
     }}
   ] or null,
   "responsibilities": [string],
-  "japan_career_relevance": {{
-    "score": float (0 - 1),
-    "verdict": "Helpful" | "Neutral" | "Risky",
-    "reason": string
-  }},
   "company_focus": string
 }}
 
@@ -64,7 +59,7 @@ def parse_response(text):
 
     resp = json.loads(text)
 
-    pp = json.loads(util.load_text_file("personal_profile.txt")).get("skills")
+    pp = json.loads(util.load_text_file("personal_profile.json")).get("skills")
     pp = [s.lower() for s in pp]
 
     print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -111,18 +106,12 @@ def parse_response(text):
             else:
                 print(f"  - {phase} ({min_years} - {max_years} years)")
 
-    relevance = resp.get('japan_career_relevance')
-    print(f"""
-● Career Relevance: {int(float(relevance.get('score')*100))}% ({relevance.get('verdict')})
-{relevance.get('reason')}
-""")
-
 
 def suggestion_with_llm(text, model="gemma3:12b"):
     
     print(f"⟲ Generating Sugggestions...")
 
-    pp = json.loads(util.load_text_file("personal_profile.txt"))
+    pp = json.loads(util.load_text_file("personal_profile.json"))
     capabilities = pp.get('skills')
     capabilities = set([s.lower() for s in capabilities])
     projects = pp.get('projects')

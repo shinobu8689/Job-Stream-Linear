@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import json
+import re
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 import sys
 import time
@@ -60,3 +62,34 @@ def clean_url(raw_url: str) -> str:
             encoded_query,
             parsed.fragment
         ))
+
+def normalise_skill(skill: str) -> str:
+    '''
+    skills = [
+                    "Amazon Web Services",
+                    "AWS",
+                    "React.js",
+                    "NodeJS",
+                    "Python3"
+                ]
+                normalised = [normalise_skill(s, skill_map) for s in skills]
+    
+    '''
+    
+    skill_map = json.loads(load_text_file("skill_map.json"))
+
+    skill = skill.lower().strip()
+
+    # remove punctuation except dots
+    skill = re.sub(r"[^\w\s\.]", "", skill)
+
+    # collapse spaces
+    skill = re.sub(r"\s+", " ", skill)
+
+    print(type(skill_map))
+
+    # direct mapping
+    if skill in skill_map:
+        return skill_map[skill]
+
+    return skill

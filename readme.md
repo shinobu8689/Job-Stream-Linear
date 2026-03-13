@@ -1,14 +1,13 @@
 basic prototype and plannings for Job Stream Linear (Temp Name)
 
 planned / todo
-- browse jobs site and detect clicks on job post to auto analyse?
-- anti bot detection measure
-- change using txt file type to json
-- skillset statics
-  - LLM personal developement suggestion using skillset statics
-  - adapt normalise keywords
+- feature: browse jobs site and detect clicks on job post to auto analyse?
+- feature: anti bot detection measure
+- revamp normalise skills keywords with rapidfuzz
 
 changelog
+- 12/03
+  - changed to .json for .txt that was json
 - 10/03
   - skills keywords normalise prototype
   - implemented skillset statics

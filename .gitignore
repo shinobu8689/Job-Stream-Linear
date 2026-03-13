@@ -1,12 +1,11 @@
 # Ignore config files
 param.txt
 content.txt
-demo.txt
-personal_profile.txt
+personal_profile.json
 pass_list.txt
 seniority_word_list.txt
 bookmarks.txt
-job_json.txt
+job.json
 prompt_p1.txt
 prompt_p2.txt
 prompt_p3.txt

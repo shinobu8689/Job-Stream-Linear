@@ -260,7 +260,7 @@ def save_stats(counter):
 
 def update_skills():
     stats = load_stats()
-    job_json = json.loads(util.load_text_file("job_json.txt"))
+    job_json = json.loads(util.load_text_file("job.json"))
     job_skills = job_json.get('skills')
     job_skills = [s.lower() for s in job_skills]
     job_opt_skills = job_json.get('opt_skills')
@@ -269,23 +269,6 @@ def update_skills():
     skills_found = list(set(job_skills + job_opt_skills))
     stats.update(skills_found)
     save_stats(stats)
-
-def normalise_skill(skill: str, skill_map: dict) -> str:
-    skill = skill.lower().strip()
-
-    # remove punctuation except dots
-    skill = re.sub(r"[^\w\s\.]", "", skill)
-
-    # collapse spaces
-    skill = re.sub(r"\s+", " ", skill)
-
-    print(type(skill_map))
-
-    # direct mapping
-    if skill in skill_map:
-        return skill_map[skill]
-
-    return skill
 
 def m1_via_api():
 
@@ -382,14 +365,14 @@ def m1_via_api():
             
 
             
-            decision = input(f"\n{"[Enter]":<7} -> 🅿️ Pass\n{"[a]":<7} -> 🔖 Save to Bookmark\n{"[c]":<7} -> 📎 Generates Cover Letter\n{"[e]":<7} -> 🚶 Exit\n")
+            decision = input(f"\n{"[Enter]":<7} -> 🅿️ Pass\n{"[a]":<7} -> 🔖 Save to Bookmark\n{"[c]":<7} -> 📎 Generates Cover Letter & 🔖\n{"[e]":<7} -> 🚶 Exit\n")
             match decision:
                 case "a":
                     save2bookmark(job.id, str(job))
                     update_skills()
                 case "c":
                     update_skills()
-                    llm.generates_cover_letter(json.loads(util.load_text_file("job_json.txt")), person = json.loads(util.load_text_file("personal_profile.txt")))
+                    llm.generates_cover_letter(json.loads(util.load_text_file("job.json")), person = json.loads(util.load_text_file("personal_profile.json")))
                     save2bookmark(job.id, str(job))
                     print("Saved to 🔖 Bookmark.")
                     util.countdown("", 5)
@@ -463,10 +446,10 @@ if __name__ == "__main__":
     while mode != "1":
         print(f"Welcome to Job Streamlinear!\n\n Please select mode:")
         print(f" 1. Auto Search via Adzuna API")
-        print(f" 2. Paste via URL (WIP)")
-        print(f" 3. Paste Raw Text (WIP)")
-        print(f" 4. View Bookmark")
-        print(f" 5. Test normalise")
+        print(f" 2. Browse Job with Playwright")
+        print(f" 3. -")
+        print(f" 4. View Bookmark (WIP)")
+        print(f" 5. -")
         print(f" 6. cover letter")
         mode = input()
 
@@ -483,19 +466,10 @@ if __name__ == "__main__":
                 for each in text:
                     print()
             case "5":
-                skill_map = json.loads(util.load_text_file("skill_map.json"))
-                skills = [
-                    "Amazon Web Services",
-                    "AWS",
-                    "React.js",
-                    "NodeJS",
-                    "Python3"
-                ]
-                normalised = [normalise_skill(s, skill_map) for s in skills]
-                print(normalised)
+                break
             case "6":
-                job = json.loads(util.load_text_file("job_json.txt"))
-                person = json.loads(util.load_text_file("personal_profile.txt"))
+                job = json.loads(util.load_text_file("job.json"))
+                person = json.loads(util.load_text_file("personal_profile.json"))
                 llm.generates_cover_letter(job, person)
             case _:
                 print("Invalid mode selected. Exiting.")

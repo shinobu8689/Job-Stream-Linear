@@ -42,7 +42,7 @@ class JobPosting:
 
     def to_json(self):
         json_str = json.dumps(self.__dict__, indent=2)
-        util.save2txt(f"job_json.txt", json_str)
+        util.save2txt(f"job.json", json_str)
 
     def __str__(self):
         if self.days_ago <= 0:  day_str = "Today"
