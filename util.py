@@ -1,17 +1,30 @@
-from datetime import datetime, timezone
-import json
-import re
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 import sys
 import time
+from pathlib import Path as FilePath
 
+# funtions for file handling, text processing, and other utilities. most self explanatory.
+
+BASE_DIR = FilePath(__file__).resolve().parent
+
+BASE_DIR = FilePath(__file__).resolve().parent
 
 def load_text_file(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    file_path = BASE_DIR / path
+
+    # Ensure parent directory exists (in case you later use subfolders)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create file if it doesn't exist
+    if not file_path.exists():
+        file_path.write_text("", encoding="utf-8")
+
+    return file_path.read_text(encoding="utf-8")
     
 def save2txt(filename, content):
-    with open(filename, "w", encoding="utf-8") as f:
+    file_path = BASE_DIR / filename
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(str(content))
 
 def hyperlink(label, url):
@@ -35,6 +48,10 @@ def contains_keywords(text, keywords):
         return False
     text_lower = text.lower()
     return any(keyword.lower() in text_lower for keyword in keywords)
+
+def days_ago(x):
+    now = datetime.now(timezone.utc)
+    return now - timedelta(days=x)
 
 def countdown(txt: str, seconds: int):
     CLEAR = "\033[2K"   # wipe entire line
@@ -62,34 +79,3 @@ def clean_url(raw_url: str) -> str:
             encoded_query,
             parsed.fragment
         ))
-
-def normalise_skill(skill: str) -> str:
-    '''
-    skills = [
-                    "Amazon Web Services",
-                    "AWS",
-                    "React.js",
-                    "NodeJS",
-                    "Python3"
-                ]
-                normalised = [normalise_skill(s, skill_map) for s in skills]
-    
-    '''
-    
-    skill_map = json.loads(load_text_file("skill_map.json"))
-
-    skill = skill.lower().strip()
-
-    # remove punctuation except dots
-    skill = re.sub(r"[^\w\s\.]", "", skill)
-
-    # collapse spaces
-    skill = re.sub(r"\s+", " ", skill)
-
-    print(type(skill_map))
-
-    # direct mapping
-    if skill in skill_map:
-        return skill_map[skill]
-
-    return skill

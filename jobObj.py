@@ -7,11 +7,11 @@ class JobPosting:
         self.title = title
         self.company = company['display_name']
         self.location = location['display_name']
-        self.date_created = util.parse_date(date_created)
+        self.date_created = util.parse_date(date_created) if date_created is not None else None
         self.url = url
         self.id = url[self.url.rfind("/") + 1 : self.url.find("?") if "?" in self.url else None]
         self.contract_time = contract_time
-        self.days_ago = util.days_to_today(date_created)
+        self.days_ago = util.days_to_today(date_created) if date_created is not None else None
         self.desciption = description
 
         # info from llm parse desc
@@ -21,6 +21,18 @@ class JobPosting:
         self.responsibilities = None
         self.company_focus = None
     
+    @classmethod
+    def manual_init(cls, title, company, location, date_created, url, description, contract_time=None):
+        return cls(
+            title=title,
+            company={"display_name": company},
+            location={"display_name": location},
+            date_created=str(date_created.strftime("%Y-%m-%dT%H:%M:%SZ")) if date_created is not None else None,
+            url=url,
+            description=description,
+            contract_time=contract_time
+        )
+
     def from_llm(self, content: json):
         self.skills = content.get("skills")
         self.opt_skills = content.get("optional_skills")
@@ -42,10 +54,11 @@ class JobPosting:
 
     def to_json(self):
         json_str = json.dumps(self.__dict__, indent=2)
-        util.save2txt(f"job.json", json_str)
+        util.save2txt(f"temp/job.json", json_str)
 
     def __str__(self):
-        if self.days_ago <= 0:  day_str = "Today"
+        if self.days_ago is None:  day_str = "N/A"
+        elif self.days_ago <= 0:  day_str = "Today"
         else:                   day_str = f"{self.days_ago} days ago"
 
         title_company = f"{self.title} - {self.company}"
@@ -56,7 +69,7 @@ class JobPosting:
             f"{(title_company):<60}"
             f"{self.contract_time:<11}"
             f"{util.hyperlink('🗺️', util.clean_url(f'https://www.google.com/search?q={self.location}'))} {self.location.split(", ")[0]:<15}"
-            f"{self.date_created:<10} ({day_str + ")":<12}"
+            f"{self.date_created if self.date_created is not None else 'N/A':<10} ({day_str + ")":<12}"
         )
     
     

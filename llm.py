@@ -4,6 +4,114 @@ import requests
 from jobObj import JobPosting
 import util
 
+# LLM functions  
+
+DEFAULT_P1_PROMPT = """Write a concise and professional opening paragraph for a cover letter in first-person perspective.
+Job Title: {title}
+Company: {company}
+Job Platform: {hiring_platform}
+Instructions:
+- Address the Hiring Manager.
+- Express interest in the {title} role at {company}.
+- Mention that the job was found on {hiring_platform}.
+- Keep the tone confident, professional, and technical.
+- Avoid clichés or generic phrases like "I am writing to express my interest."
+- Be concise (2–3 sentences), precise, and natural.
+Return the paragraph only.
+"""
+
+DEFAULT_P2_PROMPT = """Write one concise and professional paragraph in first-person perspective describing the candidate’s relevant skills.
+
+Relevant skills that match the job requirements:
+{combined_set}
+
+The candidate has experience demonstrated through the followingprojects:
+{projects}
+
+Writing guidelines:
+Highlight 3–5 of the most relevant skills rather than listing all of them.
+Reflect the candidate’s curiosity, learning abilitycommunication skills, and mindset.
+
+Tone requirements:
+Confident and professional
+Concise
+First-person perspective
+One paragraph only
+Do not invent additional skills or technologies beyond what is provided
+
+Return the paragraph only.
+
+"""
+
+DEFAULT_P3_PROMPT = """Write a short, professional paragraph explaining why the candidate is interested in working at {company}.
+
+Company focus:
+{company_focus}
+
+Instructions:
+Explain clearly why the company’s work is appealing to the candidate.
+Emphasise genuine interest in contributing rather than giving generic praise.
+Keep the tone confident, professional, and natural.
+Limit the paragraph to one concise paragraph (1–2 sentences).
+Do not invent experiences or skills not provided.
+Return only the paragraph.
+"""
+
+DEFAULT_P4_PROMPT = """Write a short closing paragraph for a cover letter.
+
+Company: {company}
+
+The paragraph should:
+Thank the reader for their time and consideration.
+Express interest in discussing the role further.
+Maintain a confident and professional tone that is slightly less formal.
+Where natural, reference contributing to {company}.
+
+Guidelines:
+1–2 sentences only.
+Clear, natural, and human-like wording.
+Avoid generic phrases, clichés, or repetitive wording.
+Focus on leaving a positive, approachable impression.
+
+Return the paragraph only.
+"""
+
+def get_basic_info(text, model="gemma3:12b"):
+    print("⟲ Generating Basic Info...")
+
+    prompt = f"""
+Extract the following from the job description. Return STRICT valid JSON only. 
+if it does not exist, return "N/A".
+
+{{
+  "title": [string],
+  "company": [string],
+  "location": [string],
+  "contract_time": [string]
+}}
+
+Job Description:
+{text}
+
+"""
+    
+    response = requests.post(       # to local ollama LLM
+        "http://localhost:11434/api/generate",
+        json={
+            "model": model,
+            "prompt": prompt,
+            "max_length": 1024,
+            "stream": False
+        }
+    )
+
+
+    text = json.loads(response.text)['response']
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if match:   data = match.group(1)
+    else:       raise ValueError("No JSON block found")
+
+    return json.loads(data)
 
 def analyse_with_llm(text, model="gemma3:12b"):
     print("⟲ Generating analysis...")
@@ -28,8 +136,8 @@ Extract the following from the job description. Return STRICT valid JSON only.
 Rules:
 - Use numbers for years (no text like "1 year").
 - If only a minimum is mentioned, omit max_years.
+- If it does not strictly state the years required or experience requirement, return null for min_experience_years.
 - responsibilities should include the duties of this role.
-- If no experience requirement is mentioned, return null.
 - Remove marketing or culture statements.
 - Keep skills concise (technologies, tools, frameworks).
     
@@ -101,7 +209,7 @@ def parse_response(text):
             min_years = each.get("min_years")
             max_years = each.get("max_years")
 
-            if max_years is None:
+            if max_years is None:   
                 print(f"  - {phase} ({min_years} years)")
             else:
                 print(f"  - {phase} ({min_years} - {max_years} years)")
@@ -218,7 +326,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     hiring_platform = input("Hiring Platform? ")
 
     print("⟲ Generating Opening Paragraph... (1/4)")
-    prompt = util.load_text_file("prompt_p1.txt").format(title=job.get('title'), company=job.get('company'), hiring_platform=hiring_platform)
+    prompt = util.load_text_file("prompt/prompt_p1.txt").format(title=job.get('title'), company=job.get('company'), hiring_platform=hiring_platform)
+    if prompt.strip() == "":
+        prompt = DEFAULT_P1_PROMPT.format(title=job.get('title'), company=job.get('company'), hiring_platform=hiring_platform)
     response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
@@ -238,7 +348,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     capabilities = [s.lower() for s in capabilities]
     combined_set = set(job_skills + job_opt_skills) & set(capabilities)
     print("⟲ Generating Skills/Project Hightlighs... (2/4)")
-    prompt = util.load_text_file("prompt_p2.txt").format(combined_set=combined_set, projects=person.get('projects'))
+    prompt = util.load_text_file("prompt/prompt_p2.txt").format(combined_set=combined_set, projects=person.get('projects'))
+    if prompt.strip() == "":
+        prompt = DEFAULT_P2_PROMPT.format(combined_set=combined_set, projects=person.get('projects'))
     response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
@@ -251,7 +363,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     p2 = json.loads(response.text)['response']
 
     print("⟲ Generating \"Why this company\"... (3/4)")
-    prompt = util.load_text_file("prompt_p3.txt").format(company_focus=job.get('company_focus'), company=job.get('company'))
+    prompt = util.load_text_file("prompt/prompt_p3.txt").format(company_focus=job.get('company_focus'), company=job.get('company'))
+    if prompt.strip() == "":
+        prompt = DEFAULT_P3_PROMPT.format(company_focus=job.get('company_focus'), company=job.get('company'))
     response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
@@ -264,7 +378,9 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     p3 = json.loads(response.text)['response']
 
     print("⟲ Generating Closing Paragraph... (4/4)")  
-    prompt = util.load_text_file("prompt_p4.txt").format(company=job.get('company'))
+    prompt = util.load_text_file("prompt/prompt_p4.txt").format(company=job.get('company'))
+    if prompt.strip() == "":
+        prompt = DEFAULT_P4_PROMPT.format(company=job.get('company'))
     response = requests.post( 
         "http://localhost:11434/api/generate",
         json={
@@ -276,8 +392,10 @@ def generates_cover_letter(job: json, person: json, model="gemma3:12b"):
     )
     p4 = json.loads(response.text)['response']
 
-    sign = util.load_text_file("signature.txt")
+    sign = util.load_text_file("prompt/signature.txt")
+    if sign.strip() == "":
+        sign = """Best regards, [Name]\n\n[LinkedIn] | [GitHub] | [Email]"""
 
-    util.save2txt(f"cover_letter.txt", p1 + "\n\n" + p2+ "\n\n" + p3 + "\n\n" + p4 + "\n\n" + sign)
+    util.save2txt(f"output_txt/cover_letter.txt", p1 + "\n\n" + p2+ "\n\n" + p3 + "\n\n" + p4 + "\n\n" + sign)
 
-    print("📎 Completed.  Saved as cover_leter.txt\n")
+    print("📎 Completed.  Saved as output_txt/cover_letter.txt\n")

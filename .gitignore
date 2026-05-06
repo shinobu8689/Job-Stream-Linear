@@ -2,17 +2,12 @@
 param.txt
 content.txt
 personal_profile.json
-pass_list.txt
-seniority_word_list.txt
-bookmarks.txt
-job.json
-prompt_p1.txt
-prompt_p2.txt
-prompt_p3.txt
-prompt_p4.txt
-signature.txt
-cover_letter.txt
+seniority_words.txt
+non_prefered_words.txt
 skills_stats.json
 
 # Ignore folders
 __pycache__
+prompt
+output_txt
+temp
