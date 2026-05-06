@@ -7,6 +7,9 @@
 
 Job listings often contain extensive requirements and varying formats, making it tedious to assess eligibility. This tool streamlines the process into a more linear workflow by handling the heavy lifting, allowing users to focus on final decision-making.
 
+This project is intended for personal productivity and learning purposes only.
+It does not automate job applications or violate platform terms of service.
+
 ---
 
 ## Features
@@ -197,6 +200,9 @@ Prepare the following files before running the application:
 **Job Stream Linear** は、求人情報の確認・評価にかかる時間を削減し、就職活動の効率を向上させるために設計されたアプリです。
 
 求人情報には多くの要件や様々な書き方が含まれていることが多く、応募の判断に時間がかかります。本ツールはそのプロセスを簡略化し、ユーザーを応募する過程をリニア化するアプリです。
+
+本プロジェクトは、個人の生産性向上および学習目的のみを意図しています。  
+求人応募の自動化や、各プラットフォームの利用規約に違反する行為は行いません。
 
 ---
 
